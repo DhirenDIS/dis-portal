@@ -98,7 +98,7 @@ pooled requests.
 > grant it `authenticated`, and point `DATABASE_URL` at that:
 >
 > ```sql
-> create role portal_app login password '...' noinherit;
+> create role portal_app login password '...' inherit;
 > grant authenticated to portal_app;
 > ```
 >

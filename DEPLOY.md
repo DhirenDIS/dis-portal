@@ -125,7 +125,7 @@ nothing.
 Open the Postgres service → **Data** tab → query runner, and run:
 
 ```sql
-create role portal_app login password 'GENERATE-SOMETHING-LONG' noinherit;
+create role portal_app login password 'GENERATE-SOMETHING-LONG' inherit;
 grant authenticated to portal_app;
 grant usage on schema public to portal_app;
 ```

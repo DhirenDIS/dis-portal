@@ -206,8 +206,20 @@ def main():
         record("total = addresses x unit price",
                tot is not None and abs(float(tot) - float(addr) * float(unit_price)) < 0.01,
                "total=%s" % tot)
-        expect_blocked(cur, "cannot edit it once submitted",
-                       "update orders set notes='changed' where id=%s", (ord_a,))
+        # A submitted order is protected by the USING clause of
+        # orders_update_draft, which no longer matches once status <> 'draft'.
+        # RLS filtering an UPDATE does NOT raise - it silently affects zero
+        # rows. So assert on rowcount and on the data being unchanged, not on
+        # an exception. (The app must check rowcount and tell the operator the
+        # order is locked, or the edit appears to succeed in the UI.)
+        before = scalar(cur, "select notes from orders where id=%s", (ord_a,))
+        cur.execute("update orders set notes='TAMPERED' where id=%s", (ord_a,))
+        affected = cur.rowcount
+        after = scalar(cur, "select notes from orders where id=%s", (ord_a,))
+        record("submitted order: update affects 0 rows", affected == 0,
+               "rowcount=%s" % affected)
+        record("submitted order: notes unchanged", after == before,
+               "before=%r after=%r" % (before, after))
         n = scalar(cur, "select count(*) from audit_log where record_id = %s", (str(ord_a),))
         record("the submission was audited", (n or 0) > 0, "%s rows" % n)
 
