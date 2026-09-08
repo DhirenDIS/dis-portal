@@ -485,15 +485,26 @@ function estimateZip(z){
 
 /* ============ state ============ */
 var S = { step:0, piece:"pc", view:"f0",
-          zips:["60540"], income:{}, lot:{}, budget:2500, zipErr:"" };
+          zips:["60540"], income:{}, lot:{}, budget:2500, zipErr:"",
+          /* hand-delivered formats have no address list, so quantity is
+             entered directly rather than derived from ZIP + criteria */
+          quantity:5000, qtyErr:"" };
 function piece(){ return PIECES.filter(function(p){return p.id===S.piece;})[0] || PIECES[0]; }
 function offer(){ return OFFER; }
 function estimates(){ return S.zips.map(function(z){ return estimateZip(z); }); }
 function totals(){
+  var p = piece(), cost;
+  if(!isMailed()){
+    /* Door hangers are walked, not mailed: no address file, no ZIP estimate.
+       The operator states how many pieces they want. */
+    cost = (S.quantity || 0) * p.price;
+    return {mailed:false, zips:0, homes:(S.quantity || 0), pending:0, est:[],
+            cost:cost, fee:cost*0.03, due:cost*1.03};
+  }
   var es = estimates(), homes = 0, pending = 0;
   es.forEach(function(e){ homes += e.hh; if(e.p.pending) pending++; });
-  var cost = homes * piece().price;
-  return {zips:S.zips.length, homes:homes, pending:pending, est:es,
+  cost = homes * p.price;
+  return {mailed:true, zips:S.zips.length, homes:homes, pending:pending, est:es,
           cost:cost, fee:cost*0.03, due:cost*1.03};
 }
 function money(v){ return "$" + v.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
@@ -600,9 +611,19 @@ function budgetCheck(){
 }
 
 /* ============ steps ============ */
-var STEPS = ["Size","Area","Proof","Pay"];
+/* Mailed pieces need the list step; hand-delivered ones skip it entirely. */
+function stepDefs(){
+  return isMailed()
+    ? [["Size", stepSize], ["Area", stepArea], ["Proof", stepProof], ["Pay", stepPay]]
+    : [["Size", stepSize], ["Proof", stepProof], ["Pay", stepPay]];
+}
+function stepNames(){ return stepDefs().map(function(d){ return d[0]; }); }
+function goTo(name){
+  var i = stepNames().indexOf(name);
+  S.step = i < 0 ? 0 : i;
+}
 function renderRail(){
-  var r = document.getElementById("rail"), h = "";
+  var r = document.getElementById("rail"), h = "", STEPS = stepNames();
   STEPS.forEach(function(name,i){
     var st = i < S.step ? "done" : i === S.step ? "now" : "todo";
     h += '<div class="rstep" data-state="' + st + '"><span class="dot">'
@@ -612,8 +633,31 @@ function renderRail(){
   h += '<button class="btn ghost" style="margin-left:auto" id="startOver">Start over</button>';
   r.innerHTML = h;
   document.getElementById("startOver").addEventListener("click", function(){
-    S.step = 0; S.zips = []; S.income = {}; S.lot = {}; S.zipErr = ""; render();
+    S.step = 0; S.zips = []; S.income = {}; S.lot = {};
+    S.zipErr = ""; S.qtyErr = ""; S.quantity = 5000; render();
   });
+}
+
+/* Quantity entry, hand-delivered formats only. */
+function qtyBlock(){
+  var p = piece(), t = totals();
+  var picks = [2500, 5000, 10000, 20000];
+  return '<div class="card"><div class="hd"><span class="t">How many</span>'
+    + '<span class="t">hand-delivered</span></div><div class="bd stack">'
+    + '<p class="notice">No address list for a door hanger &mdash; ' + CFG.mailHouse
+    + ' plans the walk routes around your branch. Tell us how many pieces you want out.</p>'
+    + '<div class="field"><label>Pieces'
+    +   '<input id="qty" value="' + (S.quantity || '') + '" inputmode="numeric">'
+    + '</label>'
+    + (S.qtyErr ? '<span class="err">' + S.qtyErr + '</span>' : '') + '</div>'
+    + '<div class="bands">' + picks.map(function(n){
+        return '<button class="band" aria-pressed="' + (S.quantity === n) + '" data-qty="' + n + '">'
+          + num(n) + '</button>';
+      }).join("") + '</div>'
+    + '<div class="tot" style="margin-top:4px">'
+    +   '<div class="r"><span>' + num(S.quantity || 0) + ' pieces at $' + p.price.toFixed(2)
+    +   '/pc</span><b>' + money(t.cost) + '</b></div></div>'
+    + '</div></div>';
 }
 
 function stepSize(){
@@ -639,8 +683,10 @@ function stepSize(){
                 + '<span class="chip-ph" style="margin-left:8px">Price placeholder</span></div>')
           + '<div class="bl">' + x.blurb + '</div><div class="sel">Selected</div></div></div>';
       }).join("") + '</div>'
-    + '<div><button class="btn primary" id="toArea"' + (p.placeholder ? " disabled" : "")
-    + '>Build your list</button>'
+    + (p.placeholder ? '' : (isMailed() ? '' : qtyBlock()))
+    + '<div><button class="btn primary" id="' + (isMailed() ? 'toArea' : 'toProof') + '"'
+    + (p.placeholder ? " disabled" : "")
+    + '>' + (isMailed() ? 'Build your list' : 'Review the proof') + '</button>'
     + (p.placeholder ? '<p class="notice" style="margin-top:8px">Pick a real format to continue.</p>' : '')
     + '</div>'
     + '</div>'
@@ -770,6 +816,22 @@ function stepArea(){
 
 function audienceTable(){
   var t = totals(), p = piece();
+  if(!t.mailed){
+    return '<div class="card"><div class="hd"><span class="t">Distribution you are approving</span>'
+      + '<span class="t">' + num(t.homes) + ' pieces</span></div>'
+      + '<div class="bd"><dl class="kv" style="grid-template-columns:auto minmax(0,1fr)">'
+      + [['Format', p.name + (p.design ? ' &middot; ' + p.design : '')],
+         ['Delivery', 'Hand-delivered door to door'],
+         ['Quantity', num(t.homes) + ' pieces'],
+         ['Routing', CFG.mailHouse + ' plans the walk routes around your branch'],
+         ['Postage', 'None &mdash; not mailed']].map(function(c){
+          return '<dt>' + c[0] + '</dt><dd style="text-align:left;font-weight:500">' + c[1] + '</dd>';
+        }).join("")
+      + '</dl>'
+      + '<p class="notice" style="margin-top:11px">Walk routes are confirmed with you before the drop. '
+      + 'No ZIP list or address file is involved.</p>'
+      + '</div></div>';
+  }
   var crit = [];
   var inc = INCOME_BANDS.filter(function(b){ return S.income[b.k]; }).map(function(b){ return b.label; });
   var lot = LOT_BANDS.filter(function(b){ return S.lot[b.k]; }).map(function(b){ return b.label; });
@@ -809,8 +871,11 @@ function summaryCard(withFee){
     +   '<dt>Ink</dt><dd>4/4 process</dd>'
     +   '<dt>' + arrivesLabel() + '</dt><dd>' + CFG.inHome + '</dd>'
     +   '<dt>Order cutoff</dt><dd>' + CFG.cutoffTxt + '</dd>'
-    +   '<dt>Est. addresses</dt><dd>' + num(t.homes) + '</dd>'
-    +   '<dt>ZIP codes</dt><dd>' + t.zips + '</dd>'
+    +   (t.mailed
+          ? '<dt>Est. addresses</dt><dd>' + num(t.homes) + '</dd>'
+            + '<dt>ZIP codes</dt><dd>' + t.zips + '</dd>'
+          : '<dt>Quantity</dt><dd>' + num(t.homes) + ' pieces</dd>'
+            + '<dt>Routing</dt><dd>Walk routes</dd>')
     + '</dl>'
     + '<div class="tot">'
     +   '<div class="r"><span>' + totalLabel() + '</span><b>' + money(t.cost) + '</b></div>'
@@ -835,8 +900,10 @@ function stepProof(){
   return '<div class="grid2"><div class="stack">'
     + '<div><h2>Review and sign off</h2>'
     + '<p class="sub">Approving authorizes production and mailing of this job for Weed Man Demo as shown. '
-    + 'Need changes? <button class="btn ghost" data-goto="0">Change size</button> &middot; '
-    + '<button class="btn ghost" data-goto="1">Change list</button></p></div>'
+    + 'Need changes? <button class="btn ghost" data-goto="Size">Change '
+    + (isMailed() ? 'size' : 'size or quantity') + '</button>'
+    + (isMailed() ? ' &middot; <button class="btn ghost" data-goto="Area">Change list</button>' : '')
+    + '</p></div>'
     + '<div class="offerstrip"><div><span class="k">Offer on this piece</span>'
     +   '<b>' + OFFER.headline + '</b></div>'
     +   '<div><span class="k">Promo code</span><b>' + piece().promo + '</b></div>'
@@ -851,7 +918,7 @@ function stepProof(){
 function stepPay(){
   var t = totals(), p = piece();
   return '<div class="stack">'
-    + '<div><button class="btn ghost" data-goto="2">&larr; Back to proof</button></div>'
+    + '<div><button class="btn ghost" data-goto="Proof">&larr; Back to proof</button></div>'
     + '<div><h2>Checkout</h2>'
     + '<p class="sub">Weed Man Demo &middot; ' + p.name + ' &middot; ' + p.paper + ' &middot; owner-occupied list.</p>'
     + '<p class="sub">Pay to lock this mailing into production for the ' + CFG.inHome
@@ -879,19 +946,47 @@ function render(){
   var w = document.getElementById("wizard"), panel = document.getElementById("panel");
   w.hidden = false;
   renderRail();
-  panel.innerHTML = [stepSize, stepArea, stepProof, stepPay][S.step]();
+  var defs = stepDefs();
+  if(S.step >= defs.length) S.step = defs.length - 1;
+  panel.innerHTML = defs[S.step][1]();
   renderViewers();
   bindPanel(panel);
 }
 
 function bindPanel(panel){
   panel.querySelectorAll("[data-piece]").forEach(function(el){
-    var go = function(){ S.piece = el.dataset.piece; render(); };
+    var go = function(){
+      var was = stepNames()[S.step];
+      S.piece = el.dataset.piece;
+      var names = stepNames(), i = names.indexOf(was);
+      /* leaving a mailed format while on Area: Area is gone, land on Proof */
+      S.step = i >= 0 ? i : Math.min(S.step, names.length - 1);
+      render();
+    };
     el.addEventListener("click", go);
     el.addEventListener("keydown", function(e){ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); go(); } });
   });
   var a = panel.querySelector("#toArea");
-  if(a) a.addEventListener("click", function(){ S.step = 1; render(); scrollWizard(); });
+  if(a) a.addEventListener("click", function(){ goTo("Area"); render(); scrollWizard(); });
+
+  /* quantity, hand-delivered formats only */
+  var qi = panel.querySelector("#qty");
+  var commitQty = function(){
+    var v = parseInt(String(qi.value).replace(/[^0-9]/g, ""), 10);
+    if(!isFinite(v) || v <= 0){ S.qtyErr = "Enter how many pieces you want out."; }
+    else if(v < 500){ S.qtyErr = "Minimum run is 500 pieces."; }
+    else { S.quantity = v; S.qtyErr = ""; }
+    render();
+  };
+  if(qi){
+    qi.addEventListener("change", commitQty);
+    qi.addEventListener("keydown", function(e){ if(e.key === "Enter"){ e.preventDefault(); commitQty(); } });
+  }
+  panel.querySelectorAll("[data-qty]").forEach(function(b){
+    b.addEventListener("click", function(){
+      S.quantity = parseInt(b.dataset.qty, 10); S.qtyErr = ""; render();
+    });
+  });
 
   var addZip = function(){
     var inp = panel.querySelector("#zipIn");
@@ -934,16 +1029,16 @@ function bindPanel(panel){
   });
 
   var tp = panel.querySelector("#toProof");
-  if(tp) tp.addEventListener("click", function(){ S.step = 2; S.view = "f0"; render(); scrollWizard(); });
+  if(tp) tp.addEventListener("click", function(){ goTo("Proof"); S.view = "f0"; render(); scrollWizard(); });
   var tpay = panel.querySelector("#toPay");
-  if(tpay) tpay.addEventListener("click", function(){ S.step = 3; render(); scrollWizard(); });
+  if(tpay) tpay.addEventListener("click", function(){ goTo("Pay"); render(); scrollWizard(); });
   var pay = panel.querySelector("#payBtn");
   if(pay) pay.addEventListener("click", function(){
     pay.innerHTML = "Demo only &mdash; nothing was charged";
     pay.disabled = true;
   });
   panel.querySelectorAll("[data-goto]").forEach(function(b){
-    b.addEventListener("click", function(){ S.step = parseInt(b.dataset.goto,10); render(); scrollWizard(); });
+    b.addEventListener("click", function(){ goTo(b.dataset.goto); render(); scrollWizard(); });
   });
 }
 function scrollWizard(){

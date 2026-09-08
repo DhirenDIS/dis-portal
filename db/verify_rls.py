@@ -223,6 +223,60 @@ def main():
         n = scalar(cur, "select count(*) from audit_log where record_id = %s", (str(ord_a),))
         record("the submission was audited", (n or 0) > 0, "%s rows" % n)
 
+    # ------------------------------------------- hand-delivered door hangers
+    # No address list at all: quantity is stated, not estimated.
+    print("\n=== 8. hand-delivered door hanger ===")
+    cur.execute("reset role")
+    fmt_dh = scalar(cur, "select id from formats where code = 'dh-4x11-a'")
+    dh_price = scalar(cur, "select unit_price from formats where id = %s", (fmt_dh,))
+    ord_h = str(uuid.uuid4())
+    cur.execute("""insert into orders
+                   (id, franchise_id, wave_id, format_id, status, billing_method,
+                    created_by, quantity)
+                   values (%s,%s,%s,%s,'draft','invoice_franchise',%s,7500)""",
+                (ord_h, fr_a, wave, fmt_dh, op_a))
+    ord_h2 = str(uuid.uuid4())
+    cur.execute("""insert into orders
+                   (id, franchise_id, wave_id, format_id, status, billing_method, created_by)
+                   values (%s,%s,%s,%s,'draft','invoice_franchise',%s)""",
+                (ord_h2, fr_a, wave, fmt_dh, op_a))
+
+    cur.execute("set local role portal_app")
+    cur.execute("select set_config('app.user_id', %s, true)", (op_a,))
+
+    expect_blocked(cur, "hanger without a quantity is rejected",
+                   "select public.submit_order(%s)", (ord_h2,))
+
+    if expect_ok(cur, "hanger with a quantity submits",
+                 "select public.submit_order(%s)", (ord_h,)):
+        n = scalar(cur, "select estimated_addresses from orders where id=%s", (ord_h,))
+        record("priced from stated quantity, not an estimate", n == 7500, "got %s" % n)
+        tot = scalar(cur, "select estimated_total from orders where id=%s", (ord_h,))
+        record("hanger total = quantity x hanger price",
+               tot is not None and abs(float(tot) - 7500 * float(dh_price)) < 0.01,
+               "total=%s at %s/pc" % (tot, dh_price))
+        snap = scalar(cur, "select unit_price_snapshot from orders where id=%s", (ord_h,))
+        record("hanger price snapshotted (not the postcard price)",
+               snap == dh_price, "snapshot=%s dh=%s" % (snap, dh_price))
+        d = scalar(cur, "select criteria_snapshot ->> 'delivery' from orders where id=%s", (ord_h,))
+        record("snapshot records hand_delivered", d == "hand_delivered", str(d))
+        z = scalar(cur, "select criteria_snapshot ? 'zips' from orders where id=%s", (ord_h,))
+        record("snapshot carries no ZIP list", z is False, "has zips key: %s" % z)
+
+    # a stray ZIP on a hand-delivered order is a contradiction
+    cur.execute("reset role")
+    ord_h3 = str(uuid.uuid4())
+    cur.execute("""insert into orders
+                   (id, franchise_id, wave_id, format_id, status, billing_method,
+                    created_by, quantity)
+                   values (%s,%s,%s,%s,'draft','invoice_franchise',%s,5000)""",
+                (ord_h3, fr_a, wave, fmt_dh, op_a))
+    cur.execute("insert into order_zips (order_id, zip) values (%s,'60540')", (ord_h3,))
+    cur.execute("set local role portal_app")
+    cur.execute("select set_config('app.user_id', %s, true)", (op_a,))
+    expect_blocked(cur, "hanger carrying a ZIP list is rejected",
+                   "select public.submit_order(%s)", (ord_h3,))
+
     # ------------------------------------------------------------- cleanup
     cur.execute("reset role")
     conn.rollback()

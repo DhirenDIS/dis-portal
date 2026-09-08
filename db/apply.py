@@ -325,15 +325,27 @@ def main():
             )""")
         conn.commit()
 
+    # Files already applied are skipped in BOTH modes. Without this, --check
+    # re-runs everything and fails on "type already exists" the moment the
+    # schema is live - which would make it useless for validating a new
+    # migration against a real database.
+    already = set()
+    cur.execute("""select 1 from information_schema.tables
+                   where table_schema='public' and table_name='schema_migrations'""")
+    if cur.fetchone():
+        cur.execute("select filename from public.schema_migrations")
+        already = {r[0] for r in cur.fetchall()}
+        conn.rollback()
+        if already:
+            print("  %d migration(s) already applied, will skip" % len(already))
+
     ok_stmts = 0
     failed = False
 
     for fname in files:
-        if mode == "--apply":
-            cur.execute("select 1 from public.schema_migrations where filename = %s", (fname,))
-            if cur.fetchone():
-                print("  %-32s already applied, skipping" % fname)
-                continue
+        if fname in already:
+            print("  %-32s already applied, skipping" % fname)
+            continue
 
         text = io.open(os.path.join(MIGRATIONS, fname), encoding="utf-8").read()
         stmts = split_sql(text)
