@@ -37,6 +37,16 @@ def scalar(cur, sql, params=()):
 
 
 def main(argv) -> int:
+    # GRANT_ARGS overrides the command line entirely. This exists because the
+    # start command lives in Railway's UI while variables can be set from the
+    # CLI - so a one-off grant can be driven without touching the dashboard.
+    # Quoted segments are supported, e.g. GRANT_ARGS='a@b.com "Weed Man Aurora"'
+    override = os.environ.get("GRANT_ARGS", "").strip()
+    if override:
+        import shlex
+        argv = shlex.split(override)
+        print("using GRANT_ARGS: %r" % argv)
+
     args = [a for a in argv if not a.startswith("--")]
     flags = {a for a in argv if a.startswith("--")}
 
