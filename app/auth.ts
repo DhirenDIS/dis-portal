@@ -14,6 +14,7 @@ import NextAuth from "next-auth";
 import PostgresAdapter from "@auth/pg-adapter";
 import Nodemailer from "next-auth/providers/nodemailer";
 import { pool } from "@/lib/db";
+import { logAuthEvent } from "@/lib/authlog";
 
 const FROM = process.env.EMAIL_FROM ?? "portal@disdirect.com";
 
@@ -82,7 +83,15 @@ async function sendVerificationRequest(params: {
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PostgresAdapter(pool),
-  session: { strategy: "database" },
+  session: {
+    strategy: "database",
+    // 8 hours absolute, sliding by an hour of activity. Short enough that a
+    // forgotten session on a shared machine expires the same day; long enough
+    // that a franchisee building an order does not get logged out mid-flow.
+    // Database-backed, so revoking is a delete rather than waiting it out.
+    maxAge: 8 * 60 * 60,
+    updateAge: 60 * 60,
+  },
   pages: { signIn: "/signin", verifyRequest: "/signin/sent", error: "/signin" },
   providers: [
     Nodemailer({
@@ -93,6 +102,18 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       sendVerificationRequest,
     }),
   ],
+  events: {
+    async signIn({ user }) {
+      await logAuthEvent("signin_succeeded", { email: user.email, userId: user.id });
+    },
+    async signOut(message) {
+      const userId =
+        "session" in message && message.session && "userId" in message.session
+          ? (message.session.userId as string)
+          : null;
+      await logAuthEvent("signout", { userId });
+    },
+  },
   callbacks: {
     async session({ session, user }) {
       // Expose the app_users id; every RLS policy keys off it.
