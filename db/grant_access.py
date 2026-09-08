@@ -5,6 +5,7 @@ Grant a person access to a franchise, and optionally make them DIS staff.
     python db/grant_access.py <email> "<franchise name>" [--staff]
     python db/grant_access.py <email> --staff-only
     python db/grant_access.py <email> "<franchise name>" --revoke
+    python db/grant_access.py <email> --revoke-staff
 
 Run inside Railway, as the migration role.
 
@@ -68,6 +69,12 @@ def main(argv) -> int:
         conn.rollback()
         return 1
     print("\nUser: %s  (%s)" % (email, user_id))
+
+    if "--revoke-staff" in flags:
+        # Deactivate rather than delete, same reasoning as franchise access:
+        # audit_log rows already point at this staff row as the actor.
+        cur.execute("update staff set is_active = false where user_id = %s", (user_id,))
+        print("  staff: deactivated (row kept - audit_log references it as an actor)")
 
     if make_staff:
         existing = scalar(cur, "select is_active from staff where user_id = %s", (user_id,))
