@@ -1,6 +1,7 @@
 import { signOut } from "@/auth";
 import { currentUserId, myFranchises, isStaff } from "@/lib/session";
 import { redirect } from "next/navigation";
+import { TopBar, WeedManMark } from "@/app/brand";
 
 export default async function Home() {
   const userId = await currentUserId();
@@ -14,24 +15,27 @@ export default async function Home() {
 
   return (
     <>
-      <header className="topbar">
-        <div>
-          <div className="wm">DIS DIRECT</div>
-          <div className="sub">Mailing Program</div>
-        </div>
-        <div className="spacer" />
-        <form
-          action={async () => {
-            "use server";
-            await signOut({ redirectTo: "/signin" });
-          }}
-        >
-          <button type="submit">Sign out</button>
-        </form>
-      </header>
+      <TopBar
+        right={
+          <form
+            action={async () => {
+              "use server";
+              await signOut({ redirectTo: "/signin" });
+            }}
+          >
+            <button type="submit">Sign out</button>
+          </form>
+        }
+      />
 
       <main>
-        <p className="kicker">{staff ? "DIS Direct staff" : "Weed Man"}</p>
+        <div className="clientmark">
+          <WeedManMark height={28} />
+          <span className="rule" />
+          <p className="kicker" style={{ margin: 0 }}>
+            {staff ? "DIS Direct staff" : "Franchise operator"}
+          </p>
+        </div>
         <h1>{franchises.length === 1 ? franchises[0]!.name : "Your franchises"}</h1>
 
         {franchises.length === 0 ? (

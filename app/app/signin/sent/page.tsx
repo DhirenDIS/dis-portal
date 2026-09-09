@@ -1,3 +1,5 @@
+import { TopBar, WeedManMark } from "@/app/brand";
+
 export const metadata = { title: "Check your email · Weed Man Mailing Program" };
 
 /**
@@ -7,15 +9,13 @@ export const metadata = { title: "Check your email · Weed Man Mailing Program" 
 export default function LinkSent() {
   return (
     <>
-      <header className="topbar">
-        <div>
-          <div className="wm">DIS DIRECT</div>
-          <div className="sub">Mailing Program</div>
-        </div>
-      </header>
+      <TopBar />
 
       <main className="narrow">
-        <p className="kicker">Weed Man</p>
+        <div className="clientmark">
+          <WeedManMark height={32} />
+          <span className="rule" />
+        </div>
         <h1>Check your email</h1>
         <p className="lede">
           If that address has an account, a sign-in link is on its way. It works once and

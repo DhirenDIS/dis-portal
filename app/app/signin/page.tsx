@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/session";
 import { requestMagicLink } from "./actions";
+import { TopBar, WeedManMark } from "@/app/brand";
 
 export const metadata = { title: "Sign in · Weed Man Mailing Program" };
 
@@ -14,15 +15,13 @@ export default async function SignIn({
 
   return (
     <>
-      <header className="topbar">
-        <div>
-          <div className="wm">DIS DIRECT</div>
-          <div className="sub">Mailing Program</div>
-        </div>
-      </header>
+      <TopBar />
 
       <main className="narrow">
-        <p className="kicker">Weed Man</p>
+        <div className="clientmark">
+          <WeedManMark height={32} />
+          <span className="rule" />
+        </div>
         <h1>Sign in</h1>
         <p className="lede">
           Enter the email address DIS Direct set your account up with. We will send you a

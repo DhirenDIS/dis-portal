@@ -29,12 +29,21 @@ h1,h2,h3{font-family:var(--f-display);margin:0;text-wrap:balance}
 a{color:var(--brand)}
 :focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:3px}
 
-.topbar{background:var(--navy);color:var(--navy-ink);padding:12px 22px;
-  display:flex;align-items:center;gap:14px}
-.topbar .wm{font-family:var(--f-display);font-weight:700;letter-spacing:.14em;font-size:14px}
+.topbar{background:var(--navy);color:var(--navy-ink);padding:11px 22px;
+  display:flex;align-items:center;gap:13px}
+/* The DIS lockup is blue-and-black on white; it gets a plate rather than a
+   reversal, which would wreck the blue mark. */
+.displate{display:inline-flex;align-items:center;background:#FFFFFF;
+  border-radius:4px;box-shadow:0 1px 0 rgba(255,255,255,.22)}
+.topbar .barsep{width:1px;align-self:stretch;margin:2px 0;
+  background:rgba(159,180,204,.38)}
 .topbar .sub{font-family:var(--f-mono);font-size:9.5px;letter-spacing:.2em;
   text-transform:uppercase;color:var(--navy-ink-2)}
 .topbar .spacer{flex:1}
+
+/* Client mark above the sign-in heading. */
+.clientmark{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.clientmark .rule{flex:1;height:1px;background:var(--line)}
 .topbar form{margin:0}
 .topbar button{background:none;border:1px solid var(--navy-ink-2);color:var(--navy-ink);
   border-radius:5px;padding:6px 11px;font:inherit;font-size:12.5px;cursor:pointer}
